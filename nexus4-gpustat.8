@@ -1,0 +1,80 @@
+.\"                                      Hey, EMACS: -*- nroff -*-
+.\" First parameter, NAME, should be all caps
+.\" Second parameter, SECTION, should be 1-8, maybe w/ subsection
+.\" other parameters are allowed: see man(7), man(1)
+.TH EVENTSTAT 8 "June 13, 2012"
+.\" Please adjust this date whenever revising the manpage.
+.\"
+.\" Some roff macros, for reference:
+.\" .nh        disable hyphenation
+.\" .hy        enable hyphenation
+.\" .ad l      left justify
+.\" .ad b      justify to both left and right margins
+.\" .nf        disable filling
+.\" .fi        enable filling
+.\" .br        insert line break
+.\" .sp <n>    insert n+1 empty lines
+.\" for manpage-specific macros, see man(7)
+.SH NAME
+nexus4-gpustat \- a tool to measure Nexus 4 GPU activity.
+.br
+
+.SH SYNOPSIS
+.B nexus4-gpustat
+.RI [options] " [delay " [count]]
+.br
+
+.SH DESCRIPTION
+nexus4-gpustat is a program that dumps the Nexus 4 GPU activity. The
+GPU frequency (in MHz) and the elapsed time, GPU on time, and time in
+various power levels (all in microseconds) are displayed at regular
+intervals.  The time between each sample is specified by delay and the
+number of samples is specified by count.  By default, samples are at
+every second and will run forever.
+
+.SH OPTIONS
+nexus4-gpustat options are as follow:
+.TP
+.B \-h
+show help
+.TP
+.B \-q 
+run quietly, only really makes sense with \-r option.
+.TP
+.B \-r csv_file
+output gathered data in a comma separated values file. This
+can be then imported and graphed using your favourite open
+source spread sheet.
+.TP
+.B \-t trace_file
+dump GPU kernel tracing into trace_file. This only works if
+the kernel has ftrace enabled and debugfs is mounted on
+/sys/kernel/debug 
+.SH EXAMPLES
+.LP
+Dump GPU usage statistics every second until stopped.
+.RS 8
+sudo nexus4-gpustat
+.RE
+.LP
+Dump the GPU stats every 60 seconds until stopped.
+.RS 8
+sudo nexus4-gpustat 60
+.RE
+.LP
+Dump GPU stats every 10 seconds just 5 times.
+.RS 8
+sudo nexus4-gpustat 10 5
+.RE
+.LP
+Quietly dump GPU stats every 10 seconds just 5 times into a CSV file.
+.RS 8
+sudo nexus4-gpustat 10 5 \-q \-r results.csv
+.RE
+.SH SEE ALSO
+.BR vmstat (8) 
+.SH AUTHOR
+nexus4-gpustat was written by Colin King <colin.king@canonical.com>
+.PP
+This manual page was written by Colin King <colin.king@canonical.com>,
+for the Ubuntu project (but may be used by others).
