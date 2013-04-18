@@ -1,0 +1,18 @@
+Source: nexus4-gpustat
+Section: admin
+Priority: optional
+Maintainer: Colin King <colin.king@canonical.com>
+Standards-Version: 3.9.4
+Build-Depends: debhelper (>= 7)
+Homepage: http://kernel.ubuntu.com/~cking/nexus4-gpustat
+
+Package: nexus4-gpustat
+Architecture: linux-any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: GPU activity monitoring tool
+ Nexus4-gpustat periodically dumps out the current GPU state on
+ a Nexus 4.  It keeps track of GPU activity and outputs the change 
+ on each output update.  The tool requires sudo to run since it 
+ needs to write to the kernel ftrace interface to start and stop the
+ monitoring.
+
