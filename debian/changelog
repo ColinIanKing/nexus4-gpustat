@@ -1,3 +1,10 @@
+nexus4-gpustat (0.01.02) raring; urgency=low
+
+  * Makefile: bump version
+  * Fix check on trace file open
+
+ -- Colin King <colin.king@canonical.com>  Fri, 19 Apr 2013 15:04:23 +0100
+
 nexus4-gpustat (0.01.01) raring; urgency=low
 
   * Makefile: bump version number
