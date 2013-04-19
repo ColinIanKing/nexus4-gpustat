@@ -535,8 +535,6 @@ int main(int argc, char **argv)
 	char *csv_filename = NULL;
 	FILE *csv = NULL;
 	char *trace_filename = NULL;
-	FILE *trace = NULL;
-
 
 	for (;;) {
 		int c = getopt(argc, argv, "chqr:t:");
@@ -710,7 +708,7 @@ int main(int argc, char **argv)
 tidy:
 	if (csv)
 		fclose(csv);
-	if (trace)
+	if (trace_filename)
 		gpu_trace_finish();
 
 	exit(ret);
