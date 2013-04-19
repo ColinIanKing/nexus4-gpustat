@@ -13,9 +13,9 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.   
- *  
- */ 
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,6 +31,7 @@
 
 #define APP_NAME		"nexus4-gpustat"
 #define OPT_QUIET		(0x00000001)
+#define OPT_CPUSTAT		(0x00000002)
 
 #define T_STATE_START		0x00000001
 #define T_STATE_SUBMIT		0x00000002
@@ -40,8 +41,21 @@
 
 static volatile bool stop_gpustat = false; 	/* Stops gpustat main loop */
 static volatile bool stop_gputrace = false; 	/* Stops tracing main loop */
+static unsigned long ncpus;
 
 static pid_t trace_pid;				/* PID of tracer process */
+
+typedef struct {
+	double user;
+	double nice;
+	double sys;
+	double iowait;
+	double idle;
+	long long ctxt;
+	long long intr;
+	long running;
+	long blocked;
+} cpustat_info;
 
 typedef struct {
 	unsigned long long on_time;		/* usec GPU on time */
@@ -79,7 +93,7 @@ static int get_uptime(float *uptime)
 
 	fp = fopen("/proc/uptime", "r");
 	if (fp == NULL) {
-		fprintf(stderr, "Cannot open /proc/uptime\n");
+		fprintf(stderr, "Cannot open /proc/uptime.\n");
 		return -1;
 	}
 
@@ -91,6 +105,93 @@ static int get_uptime(float *uptime)
 	return ret;
 }
 
+static int get_cpustat(cpustat_info *info)
+{
+	FILE *fp;
+	char buffer[4096];
+
+	fp = fopen("/proc/stat", "r");
+	if (fp == NULL)
+		return -1;
+
+	info->user = 0.0;
+	info->nice = 0.0;
+	info->sys  = 0.0;
+	info->iowait = 0.0;
+	info->ctxt = 0;
+	info->intr = 0;
+	info->running = 0;
+	info->blocked = 0;
+
+	while (fgets(buffer, sizeof(buffer), fp) != NULL) {
+		if (strncmp(buffer, "cpu ", 4) == 0) {
+			if (sscanf(buffer, "%*s %lf %lf %lf %*d %lf",
+				&info->user, &info->nice, &info->sys,
+				&info->iowait) != 4) {
+				fprintf(stderr, "Failed to read /proc/stat cpu stats.\n");
+				return -1;
+			}
+
+			info->user /= ncpus;
+			info->nice /= ncpus;
+			info->sys /= ncpus;
+			info->iowait /= ncpus;
+			info->idle = 0.0;
+		}
+		if (strncmp(buffer, "ctxt ", 5) == 0) {
+			if (sscanf(buffer, "%*s %lld", &info->ctxt) != 1) {
+				fprintf(stderr, "Failed to read /proc/stat ctxt stats.\n");
+				return -1;
+			}
+		}
+		if (strncmp(buffer, "intr ", 5) == 0) {
+			if (sscanf(buffer, "%*s %lld", &info->intr) != 1) {
+				fprintf(stderr, "Failed to read /proc/stat intr stats.\n");
+				return -1;
+			}
+		}
+		if (strncmp(buffer, "procs_running ", 14) == 0) {
+			if (sscanf(buffer, "%*s %ld", &info->running) != 1) {
+				fprintf(stderr, "Failed to read /proc/stat proc_running stats.\n");
+				return -1;
+			}
+		}
+		if (strncmp(buffer, "procs_blocked ", 14) == 0) {
+			if (sscanf(buffer, "%*s %ld", &info->blocked) != 1) {
+				fprintf(stderr, "Failed to read /proc/stat proc_blocked stats.\n");
+				return -1;
+			}
+		}
+	}
+
+	fclose(fp);
+
+	return 0;
+}
+
+
+#define CPU_DELTA(delta, info1, info2, field)	\
+	delta->field = (info2->field - info1->field) < 0 ? 0 : (info2->field - info1->field)
+
+void get_cpustat_delta(cpustat_info *delta, cpustat_info *info1, cpustat_info *info2)
+{
+	CPU_DELTA(delta, info1, info2, user);
+	CPU_DELTA(delta, info1, info2, nice);
+	CPU_DELTA(delta, info1, info2, sys);
+	CPU_DELTA(delta, info1, info2, iowait);
+	CPU_DELTA(delta, info1, info2, ctxt);
+	CPU_DELTA(delta, info1, info2, intr);
+	/*
+	 *  Some ARM platforms when idle jump back in time in /proc/stats
+	 *  so compute idle from what is left over
+	 */
+	delta->idle = 100.0 - (delta->user + delta->nice + delta->sys + delta->iowait);
+
+	/* Don't need to compute delta for the following */
+	delta->running = info2->running;
+	delta->blocked = info2->blocked;
+}
+
 /*
  *  nexus4_get_gputop
  *	read GPU top values, values in uS
@@ -99,6 +200,8 @@ static int nexus4_get_gputop(gputop_info *info)
 {
 	FILE *fp;
 	int ret = 0;
+
+	memset(info, 0, sizeof(gputop_info));
 
 	fp = fopen("/sys/devices/platform/kgsl-3d0.0/kgsl/kgsl-3d0/gputop", "r");
 	if (fp == NULL)
@@ -127,6 +230,8 @@ static int nexus4_get_gpuclk(unsigned long long *clk)
 {
 	FILE *fp;
 	int ret = 0;
+
+	*clk = 0;
 
 	fp = fopen("/sys/devices/platform/kgsl-3d0.0/kgsl/kgsl-3d0/gpuclk", "r");
 	if (fp == NULL)
@@ -184,12 +289,12 @@ static int tracing_write(const char *file, const char *data)
 
 	fp = fopen(file, "w");
 	if (fp == NULL) {
-		fprintf(stderr, "Cannot open tracing file %s to update\n", file);
+		fprintf(stderr, "Cannot open tracing file %s to update.\n", file);
 		return -1;
 	}
 
 	if (fwrite(data, 1, n, fp) != n) {
-		fprintf(stderr, "Cannot write %s to tracing file %s\n", data, file);
+		fprintf(stderr, "Cannot write %s to tracing file %s.\n", data, file);
 		ret = -1;
 	}
 
@@ -213,7 +318,6 @@ static int gpu_trace_start(const char *trace_filename)
 	int i;
 
 	gpu_submit_procs *p, *procs = NULL, **sorted;
-
 
 	if (tracing_write("/sys/kernel/debug/tracing/current_tracer", "function\n") < 0) {
 		tracing_error();
@@ -240,13 +344,13 @@ static int gpu_trace_start(const char *trace_filename)
 	trace = fopen(trace_filename, "w");
 	if (fp == NULL) {
 		fclose(fp);
-		fprintf(stderr, "Cannot open trace file %s\n", trace_filename);
+		fprintf(stderr, "Cannot open trace file %s.\n", trace_filename);
 		return -1;
 	}
 
 	pid = fork();
 	if (pid < 0) {
-		fprintf(stderr, "Failed to fork off tracing child process\n");
+		fprintf(stderr, "Failed to fork off tracing child process.\n");
 		fclose(fp);
 		fclose(trace);
 		return -1;
@@ -281,7 +385,7 @@ static int gpu_trace_start(const char *trace_filename)
 			}
 			break;
 		}
-	
+
 		buffer[sizeof(buffer)-1] = '\0';
 		if (strlen(buffer) < 48)
 			continue;
@@ -303,7 +407,7 @@ static int gpu_trace_start(const char *trace_filename)
 
 		if (strcmp(func, "adreno_irq_handler") == 0)
 			state = T_STATE_IRQ;
-	
+
 		if (strcmp(func, "adreno_submit") == 0)
 			state = T_STATE_SUBMIT;
 
@@ -332,9 +436,8 @@ static int gpu_trace_start(const char *trace_filename)
 						break;
 					}
 				}
-				
 				/*
-				 *  Not found, add, don't break if out of memory 
+				 *  Not found, add, don't break if out of memory
 				 */
 				if (!found) {
 					p = calloc(1, sizeof(*p));
@@ -352,7 +455,7 @@ static int gpu_trace_start(const char *trace_filename)
 		}
 	}
 	fclose(fp);
-	
+
 	/*
 	 *  Dump out submitters sorted on submit count first order
 	 */
@@ -382,7 +485,7 @@ static int gpu_trace_start(const char *trace_filename)
 		free(p);
 		p = next;
 	}
-	
+
 	exit(0);
 }
 
@@ -412,6 +515,7 @@ static void show_usage(void)
 	printf("%s, version %s\n\n", APP_NAME, VERSION);
 	printf("Usage %s [options] [duration] [count]\n", APP_NAME);
 	printf("Options are:\n");
+	printf("  -c\t\tgather CPU statistics.\n");
 	printf("  -h\t\tprint this help.\n");
 	printf("  -q\t\trun quietly, useful with option -r.\n");
 	printf("  -r filename\tspecifies a comma separated values (CSV) output file to dump samples into.\n");
@@ -421,6 +525,7 @@ static void show_usage(void)
 int main(int argc, char **argv)
 {
 	struct timeval tv1, tv2;
+	cpustat_info cpustat1, cpustat2, cpustat_delta;
 	int count = 10;
 	double duration = 1.0;
 	double whence = 0;
@@ -432,12 +537,16 @@ int main(int argc, char **argv)
 	char *trace_filename = NULL;
 	FILE *trace = NULL;
 
+
 	for (;;) {
-		int c = getopt(argc, argv, "hqr:t:");
+		int c = getopt(argc, argv, "chqr:t:");
 		if (c == -1)
 			break;
 
 		switch (c) {
+		case 'c':
+			opt_flags |= OPT_CPUSTAT;
+			break;
 		case 'h':
 			show_usage();
 			exit(EXIT_SUCCESS);
@@ -492,13 +601,23 @@ int main(int argc, char **argv)
 	}
 
 	if (csv)
-		fprintf(csv, "When,Freq (MHz),Elapsed,On Time,PWR L1,PWR L2,PWR L3,PWR L4,PWR L5\n");
-	
+		fprintf(csv, "When,Freq (MHz),Elapsed,On Time,PWR L1,PWR L2,PWR L3,PWR L4,PWR L5%s\n",
+			opt_flags & OPT_CPUSTAT ?
+				",User,Sys,Idle,IOWait,Nice,Ctxt,Intr,Running,Blocked" : "");
+
 	if (!(opt_flags & OPT_QUIET)) {
-		printf("  When   Freq (MHz)   Elapsed  On Time   PWR L1   PWR L2   PWR L3   PWR L4   PWR L5\n");
+		printf("  When   Freq (MHz)   Elapsed  On Time   PWR L1   PWR L2   PWR L3   PWR L4   PWR L5%s\n",
+			opt_flags & OPT_CPUSTAT ?
+				"   User    Sys   Idle" : "");
 	}
 
+	ncpus = sysconf(_SC_NPROCESSORS_CONF);
 	signal(SIGINT, &handle_sigint);
+
+	if (opt_flags & OPT_CPUSTAT) {
+		get_cpustat(&cpustat2);
+		sleep(1);
+	}
 	gettimeofday(&tv1, NULL);
 
 	while (!stop_gpustat && (forever || count--)) {
@@ -507,18 +626,29 @@ int main(int argc, char **argv)
 		unsigned long long usec;
 
 		if (nexus4_get_gputop(&info) < 0) {
-			fprintf(stderr, "Failed to read GPU stats\n");
+			fprintf(stderr, "Failed to read GPU stats.\n");
 			ret = EXIT_FAILURE;
 			break;
 		}
 		if (nexus4_get_gpuclk(&clk) < 0) {
-			fprintf(stderr, "Failed to read GPU clock\n");
+			fprintf(stderr, "Failed to read GPU clock.\n");
 			ret = EXIT_FAILURE;
 			break;
 		}
 
+		if (opt_flags & OPT_CPUSTAT) {
+			cpustat1 = cpustat2;
+			if (get_cpustat(&cpustat2) < 0) {
+				fprintf(stderr, "Failed to read CPU statistics.\n");
+				ret = EXIT_FAILURE;
+				break;
+			}
+
+			get_cpustat_delta(&cpustat_delta, &cpustat1, &cpustat2);
+		}
+
 		if (!(opt_flags & OPT_QUIET)) {
-			printf("%6.1f    %8.3f   %8llu %8llu %8llu %8llu %8llu %8llu %8llu\n",
+			printf("%6.1f    %8.3f   %8llu %8llu %8llu %8llu %8llu %8llu %8llu",
 				whence,
 				(double)clk / 1000000.0,
 				info.elapsed_time,
@@ -528,11 +658,20 @@ int main(int argc, char **argv)
 				info.pwr_level[2],
 				info.pwr_level[3],
 				info.pwr_level[4]);
+
+			if (opt_flags & OPT_CPUSTAT) {
+				printf(" %6.2f %6.2f %6.2f",
+					(double)cpustat_delta.user,
+					(double)cpustat_delta.sys,
+					(double)cpustat_delta.idle);
+			}
+
+			putchar('\n');
 			fflush(stdout);
 		}
 
 		if (csv) {
-			fprintf(csv, "%6.1f,%8.3f,%8llu,%8llu,%8llu,%8llu,%8llu,%8llu,%8llu\n",
+			fprintf(csv, "%6.1f,%8.3f,%8llu,%8llu,%8llu,%8llu,%8llu,%8llu,%8llu",
 				whence,
 				(double)clk / 1000000.0,
 				info.elapsed_time,
@@ -542,6 +681,20 @@ int main(int argc, char **argv)
 				info.pwr_level[2],
 				info.pwr_level[3],
 				info.pwr_level[4]);
+
+			if (opt_flags & OPT_CPUSTAT) {
+				fprintf(csv, ",%6.2f,%6.2f,%6.2f,%6.2f,%6.2f,%8lld,%8lld,%8ld,%8ld",
+					(double)cpustat_delta.user,
+					(double)cpustat_delta.sys,
+					(double)cpustat_delta.idle,
+					(double)cpustat_delta.iowait,
+					(double)cpustat_delta.nice,
+					cpustat_delta.ctxt,
+					cpustat_delta.intr,
+					cpustat_delta.running,
+					cpustat_delta.blocked);
+			}
+			fputc('\n', csv);
 			fflush(csv);
 		}
 
