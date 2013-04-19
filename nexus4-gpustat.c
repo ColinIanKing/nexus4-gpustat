@@ -342,7 +342,7 @@ static int gpu_trace_start(const char *trace_filename)
 	}
 
 	trace = fopen(trace_filename, "w");
-	if (fp == NULL) {
+	if (trace == NULL) {
 		fclose(fp);
 		fprintf(stderr, "Cannot open trace file %s.\n", trace_filename);
 		return -1;
