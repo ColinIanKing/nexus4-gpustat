@@ -1,3 +1,10 @@
+nexus4-gpustat (0.01.01) raring; urgency=low
+
+  * Makefile: bump version number
+  * cpustat: add -c option, tidy up code
+
+ -- Colin King <colin.king@canonical.com>  Fri, 19 Apr 2013 12:01:01 +0100
+
 nexus4-gpustat (0.01.00) raring; urgency=low
 
   * Initial version 
