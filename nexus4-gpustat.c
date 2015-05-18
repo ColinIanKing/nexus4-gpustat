@@ -605,12 +605,12 @@ int main(int argc, char **argv)
 
 	if (csv)
 		fprintf(csv, "When,Freq (MHz),Elapsed,On Time,PWR L1,PWR L2,PWR L3,PWR L4,PWR L5%s\n",
-			opt_flags & OPT_CPUSTAT ?
+			(opt_flags & OPT_CPUSTAT) ?
 				",User,Sys,Idle,IOWait,Nice,Ctxt,Intr,Running,Blocked" : "");
 
 	if (!(opt_flags & OPT_QUIET)) {
 		printf("  When   Freq (MHz)   Elapsed  On Time   PWR L1   PWR L2   PWR L3   PWR L4   PWR L5%s\n",
-			opt_flags & OPT_CPUSTAT ?
+			(opt_flags & OPT_CPUSTAT) ?
 				"   User    Sys   Idle" : "");
 	}
 
