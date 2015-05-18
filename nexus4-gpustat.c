@@ -320,9 +320,8 @@ static int gpu_trace_start(const char *trace_filename)
 	FILE *fp;
 	FILE *trace;
 	int submitters = 0;
-	int i;
 
-	gpu_submit_procs *p, *procs = NULL, **sorted;
+	gpu_submit_procs *p, *procs = NULL;
 
 	if (tracing_write("/sys/kernel/debug/tracing/current_tracer", "function\n") < 0) {
 		tracing_error();
@@ -379,7 +378,6 @@ static int gpu_trace_start(const char *trace_filename)
 
 	while (!stop_gputrace) {
 		char buffer[8192];
-		char *task;
 		char *func;
 		char *ptr;
 		float when;
@@ -420,8 +418,8 @@ static int gpu_trace_start(const char *trace_filename)
 			state = T_STATE_RB_SUBMIT;
 
 		if (state != last_state) {
-			bool found = false;
 			buffer[22] = '\0';
+			char *task;
 
 			task = buffer;
 			while (*task == ' ')
@@ -434,6 +432,8 @@ static int gpu_trace_start(const char *trace_filename)
 			 *  Keep tally of processes that are submitting to GPU
 			 */
 			if (state == T_STATE_SUBMIT || state == T_STATE_RB_SUBMIT) {
+				bool found = false;
+
 				for (p = procs; p; p = p->next) {
 					if (strcmp(p->task, task) == 0) {
 						found = true;
@@ -465,6 +465,9 @@ static int gpu_trace_start(const char *trace_filename)
 	 *  Dump out submitters sorted on submit count first order
 	 */
 	if (submitters) {
+		int i;
+		gpu_submit_procs **sorted;
+
 		sorted = calloc(submitters, sizeof(gpu_submit_procs *));
 		if (!sorted) {
 			printf("Cannot sort, out of memory!\n");
