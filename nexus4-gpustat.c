@@ -129,6 +129,7 @@ static int get_cpustat(cpustat_info *info)
 				&info->user, &info->nice, &info->sys,
 				&info->iowait) != 4) {
 				fprintf(stderr, "Failed to read /proc/stat cpu stats.\n");
+				fclose(fp);
 				return -1;
 			}
 
@@ -141,24 +142,28 @@ static int get_cpustat(cpustat_info *info)
 		if (strncmp(buffer, "ctxt ", 5) == 0) {
 			if (sscanf(buffer, "%*s %lld", &info->ctxt) != 1) {
 				fprintf(stderr, "Failed to read /proc/stat ctxt stats.\n");
+				fclose(fp);
 				return -1;
 			}
 		}
 		if (strncmp(buffer, "intr ", 5) == 0) {
 			if (sscanf(buffer, "%*s %lld", &info->intr) != 1) {
 				fprintf(stderr, "Failed to read /proc/stat intr stats.\n");
+				fclose(fp);
 				return -1;
 			}
 		}
 		if (strncmp(buffer, "procs_running ", 14) == 0) {
 			if (sscanf(buffer, "%*s %ld", &info->running) != 1) {
 				fprintf(stderr, "Failed to read /proc/stat proc_running stats.\n");
+				fclose(fp);
 				return -1;
 			}
 		}
 		if (strncmp(buffer, "procs_blocked ", 14) == 0) {
 			if (sscanf(buffer, "%*s %ld", &info->blocked) != 1) {
 				fprintf(stderr, "Failed to read /proc/stat proc_blocked stats.\n");
+				fclose(fp);
 				return -1;
 			}
 		}
