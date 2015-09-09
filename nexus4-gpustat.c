@@ -33,11 +33,12 @@
 #define OPT_QUIET		(0x00000001)
 #define OPT_CPUSTAT		(0x00000002)
 
-#define T_STATE_START		0x00000001
-#define T_STATE_SUBMIT		0x00000002
-#define T_STATE_RB_SUBMIT	0x00000003
-#define T_STATE_IDLE		0x00000004
-#define T_STATE_IRQ		0x00000005
+#define T_STATE_INIT		(0x00000000)
+#define T_STATE_START		(0x00000001)
+#define T_STATE_SUBMIT		(0x00000002)
+#define T_STATE_RB_SUBMIT	(0x00000003)
+#define T_STATE_IDLE		(0x00000004)
+#define T_STATE_IRQ		(0x00000005)
 
 static volatile bool stop_gpustat = false; 	/* Stops gpustat main loop */
 static volatile bool stop_gputrace = false; 	/* Stops tracing main loop */
@@ -315,7 +316,7 @@ static int tracing_write(const char *file, const char *data)
 static int gpu_trace_start(const char *trace_filename)
 {
 	pid_t pid;
-	unsigned int state, last_state = 0;
+	unsigned int state = T_STATE_INIT, last_state = T_STATE_INIT;
 	float uptime;
 	FILE *fp;
 	FILE *trace;
