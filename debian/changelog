@@ -1,3 +1,13 @@
+nexus4-gpustat (0.01.05) unstable; urgency=low
+
+  * Makefile: bump version
+  * Update Standards-Version and debhelper version
+  * Update debian copyright year
+  * Update debian compat to 9
+  * Initialise state, fixes warning found by scan-build
+
+ -- Colin King <colin.king@canonical.com>  Wed, 9 Sep 2015 10:42:00 +0100
+
 nexus4-gpustat (0.01.04) unstable; urgency=low
 
   * Makefile: bump version
